@@ -5,15 +5,12 @@
         import { getDatabase, ref, set, onValue } from "https://gstatic.com";
 
         // BƯỚC THAY THẾ: Bạn lấy các thông số cấu hình này trên trang Firebase Console của bạn điền vào đây
-        const firebaseConfig = {
-            apiKey: "AIzaSyA1...",
-            authDomain: "://firebaseapp.com",
-            databaseURL: "https://firebaseio.com", // Link database realtime của bạn
-            projectId: "thp-championship",
-            storageBucket: "://appspot.com",
-            messagingSenderId: "123456789",
-            appId: "1:12345:web:abcd"
-        };
+                const firebaseConfig = {};
+        window.FirebaseDB = null;
+        window.FirebaseRef = null;
+        window.FirebaseSet = null;
+        window.FirebaseOnValue = null;
+
 
         // Khởi tạo ứng dụng mạng
         const app = initializeApp(firebaseConfig);
