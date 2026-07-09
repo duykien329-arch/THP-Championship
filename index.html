@@ -1,0 +1,169 @@
+    <!-- ĐOẠN CODE NÂNG CẤP ĐỒNG BỘ FIREBASE REALTIME DATABASE CHUYÊN NGHIỆP -->
+    <script type="module">
+        // Nhúng các hàm lõi kết nối mạng của Firebase SDK
+        import { initializeApp } from "https://gstatic.com";
+        import { getDatabase, ref, set, onValue } from "https://gstatic.com";
+
+        // BƯỚC THAY THẾ: Bạn lấy các thông số cấu hình này trên trang Firebase Console của bạn điền vào đây
+        const firebaseConfig = {
+            apiKey: "AIzaSyA1...",
+            authDomain: "://firebaseapp.com",
+            databaseURL: "https://firebaseio.com", // Link database realtime của bạn
+            projectId: "thp-championship",
+            storageBucket: "://appspot.com",
+            messagingSenderId: "123456789",
+            appId: "1:12345:web:abcd"
+        };
+
+        // Khởi tạo ứng dụng mạng
+        const app = initializeApp(firebaseConfig);
+        const db = getDatabase(app);
+
+        // Xuất các biến ra ngoài môi trường toàn cục để React bên dưới có thể gọi được trên iPhone
+        window.FirebaseDB = db;
+        window.FirebaseRef = ref;
+        window.FirebaseSet = set;
+        window.FirebaseOnValue = onValue;
+    </script>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        const PLACEMENT_POINTS = { 1: 12, 2: 9, 3: 8, 4: 7, 5: 6, 6: 5, 7: 4, 8: 3, 9: 2, 10: 1, 11: 0, 12: 0 };
+
+        function THPChampionshipApp() {
+            const [view, setView] = useState('home'); 
+            const [teams, setTeams] = useState([]); // Chuyển thành mảng rỗng để đợi tải dữ liệu từ mạng về
+            const [loading, setLoading] = useState(true);
+            const [search, setSearch] = useState('');
+            
+            const [adminTeam, setAdminTeam] = useState('');
+            const [adminRank, setAdminRank] = useState(1);
+            const [adminKills, setAdminKills] = useState(0);
+
+            // TỰ ĐỘNG LẮNG NGHE VÀ CẬP NHẬT DỮ LIỆU TỪ MẠNG THEO THỜI GIAN THỰC (REALTIME)
+            useEffect(() => {
+                if (!window.FirebaseDB) return;
+                
+                const teamsDbRef = window.FirebaseRef(window.FirebaseDB, "tournaments/thp_season1/teams");
+                
+                // Cứ có bất kỳ thay đổi nào trên hệ thống mạng, hàm này tự động chạy để cập nhật giao diện ngay lập tức
+                const unsubscribe = window.FirebaseOnValue(teamsDbRef, (snapshot) => {
+                    const data = snapshot.val();
+                    if (data) {
+                        // Chuyển đổi dữ liệu dạng Object từ Firebase sang dạng Mảng để React xử lý
+                        const formattedTeams = Object.keys(data).map(key => ({
+                            id: key,
+                            ...data[key]
+                        }));
+                        setTeams(formattedTeams);
+                        if(formattedTeams.length > 0 && !adminTeam) {
+                            setAdminTeam(formattedTeams[0].id);
+                        }
+                    }
+                    setLoading(false);
+                });
+
+                return () => unsubscribe();
+            }, []);
+
+            const getSortedLeaderboard = () => {
+                return teams
+                    .map(t => {
+                        const placementPts = PLACEMENT_POINTS[t.rank_match] || 0;
+                        const totalPts = placementPts + (t.kill_points || 0);
+                        return { ...t, placement_points: placementPts, total_points: totalPts };
+                    })
+                    .filter(t => t.name.toLowerCase().includes(search.toLowerCase()))
+                    .sort((a, b) => b.total_points - a.total_points || b.kill_points - a.kill_points);
+            };
+
+            // HÀM LƯU ĐIỂM LÊN MẠNG (ĐỒNG BỘ SANG MÁY KHÁCH THEO THỜI GIAN THỰC)
+            const handleAdminSubmit = (e) => {
+                e.preventDefault();
+                if (!window.FirebaseDB) return;
+
+                const targetTeamRef = window.FirebaseRef(window.FirebaseDB, `tournaments/thp_season1/teams/${adminTeam}`);
+                
+                // Đẩy dữ liệu cập nhật trực tiếp lên đám mây Firebase
+                window.FirebaseSet(targetTeamRef, {
+                    name: teams.find(t => t.id === adminTeam).name,
+                    flag_emoji: teams.find(t => t.id === adminTeam).flag_emoji || "🇻🇳",
+                    rank_match: parseInt(adminRank),
+                    kill_points: parseInt(adminKills)
+                }).then(() => {
+                    alert("Cập nhật thành công lên đám mây! Hệ thống người xem đã tự đồng bộ nhảy số.");
+                });
+            };
+
+            const handleResetMatch = () => {
+                if(confirm("Bạn có chắc chắn muốn Reset trận đấu này trên toàn hệ thống mạng công khai?")) {
+                    teams.forEach(t => {
+                        const targetTeamRef = window.FirebaseRef(window.FirebaseDB, `tournaments/thp_season1/teams/${t.id}`);
+                        window.FirebaseSet(targetTeamRef, {
+                            name: t.name,
+                            flag_emoji: t.flag_emoji || "🇻🇳",
+                            rank_match: 12,
+                            kill_points: 0
+                        });
+                    });
+                }
+            };
+
+            const sortedData = getSortedLeaderboard();
+
+            if (loading) {
+                return (
+                    <div className="min-h-screen w-full flex items-center justify-center bg-esportsDark font-orbitron text-xs tracking-widest text-neonPurple">
+                        CONNECTING TO THP CLOUD NETWORKS...
+                    </div>
+                );
+            }
+
+            return (
+                <div className="relative min-h-screen w-full flex flex-col justify-between">
+                    <header className="w-full bg-zinc-950/90 backdrop-blur-md border-b border-zinc-800 px-6 py-4 flex justify-between items-center z-50 sticky top-0">
+                        <div className="font-orbitron font-black text-xl tracking-wider text-white cursor-pointer" onClick={() => setView('home')}>
+                            THP<span className="text-neonPurple">.PRO</span>
+                        </div>
+                        <div className="flex gap-4 text-xs font-bold font-orbitron">
+                            <button onClick={() => setView('home')} className={`pb-1 ${view === 'home' ? 'text-neonPurple border-b-2 border-neonPurple' : 'text-gray-400'}`}>TRANG CHỦ</button>
+                            <button onClick={() => setView('leaderboard')} className={`pb-1 ${view === 'leaderboard' ? 'text-neonPurple border-b-2 border-neonPurple' : 'text-gray-400'}`}>BXH LIVE</button>
+                            <button onClick={() => setView('admin')} className={`pb-1 ${view === 'admin' ? 'text-neonPurple border-b-2 border-neonPurple' : 'text-gray-400'}`}>BTC ADMIN</button>
+                        </div>
+                    </header>
+
+                    {view === 'home' && (
+                        <main className="flex-1 flex flex-col items-center justify-center px-4 relative z-20 text-center my-auto">
+                            <div className="absolute inset-0 neon-grid pointer-events-none z-0"></div>
+                            <div className="z-10 max-w-md w-full">
+                                <span className="px-3 py-1 rounded bg-red-600 text-white font-bold text-[10px] tracking-widest uppercase mb-4 inline-block font-orbitron animate-pulse">
+                                    ESPÔRTS CLOUD TOURNAMENT
+                                </span>
+                                <h1 className="text-4xl font-black font-orbitron tracking-tight mb-2 text-white">
+                                    THP CHAMPIONSHIP
+                                </h1>
+                                <p className="text-gray-400 text-xs px-6 mb-8">
+                                    Hệ thống máy chủ xử lý dữ liệu và vận hành giải đấu Free Fire Realtime.
+                                </p>
+                                <button onClick={() => setView('leaderboard')} className="w-full py-4 bg-transparent border-2 border-neonPurple text-white font-bold font-orbitron rounded-lg shadow-neon-purple active:scale-95 text-sm tracking-widest uppercase">
+                                    🚀 KẾT NỐI LIVE LEADERBOARD
+                                </button>
+                            </div>
+                        </main>
+                    )}
+
+                    {view === 'leaderboard' && (
+                        <main className="flex-1 max-w-4xl w-full mx-auto px-4 py-6 z-20">
+                            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+                                <div>
+                                    <h2 className="text-xl font-black font-orbitron text-white tracking-wide">LEADERBOARD LIVE</h2>
+                                    <p className="text-[11px] text-emerald-400 font-bold animate-pulse">● ĐỒNG BỘ CLOUD TIME-REALTIME</p>
+                                </div>
+                                <input type="text" placeholder="🔍 Tìm kiếm đội tuyển..." value={search} onChange={(e) => setSearch(e.target.value)} className="w-full sm:w-60 bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-neonPurple" />
+                            </div>
+
+                            <div className="bg-zinc-900/90 border border-zinc-800 rounded-xl overflow-hidden shadow-2xl">
+                                <table className="w-full text-left border-collapse text-xs">
+                                    <thead>
+                                        <tr className="bg-zinc-950 text-gray-400 font-orbitron uppercase text-[10px] tracking-wider border-b border-zinc-800">
